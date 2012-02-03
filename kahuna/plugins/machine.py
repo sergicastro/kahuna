@@ -85,7 +85,7 @@ class MachinePlugin:
         parser.add_option("-u","--user",help="user to loggin in the machine",action="store",dest="user")
         parser.add_option("-p","--psswd",help="password to loggin in the machine",action="store",dest="psswd")
         # parser.add_option("-c","--port",help="port from machine",action="store",dest="port")
-        parser.add_option("-t","--type",help="hypervisor type of the machine",action="store",dest="hypervisor")
+        parser.add_option("-t","--type",help="hypervisor type of the machine",action="store",dest="type")
         parser.add_option("-r","--rsip",help="ip from remote services",action="store",dest="remoteservicesip")
         parser.add_option("-d","--datastore",
                 help="datastore to enable on physical machine",action="store",dest="datastore")
@@ -105,7 +105,7 @@ class MachinePlugin:
         rsip = self._getConfig(config,options,host,"remoteservicesip")
         dsname = self._getConfig(config,options,host,"datastore")
         vswitch =  self._getConfig(config,options,host,"vswitch")
-        hypervisor = options.hypervisor
+        hypervisor = self._getConfig(config,options,host,"type",False)
 
         context = ContextLoader().load()
         try:
@@ -150,7 +150,7 @@ class MachinePlugin:
                     machine = dc.discoverSingleMachine(host, hyp, user, psswd)
                     break
                 except (AbiquoException, HttpResponseException), ex:
-                    if ex.hasError("NC-3") or ex.hasError("RS-2"):
+                    if type(ex) is AbiquoException and (ex.hasError("NC-3") or ex.hasError("RS-2")):
                         print ex.getMessage().replace("\n","")
                         return
                     log.debug(ex.getMessage().replace("\n",""))
@@ -233,7 +233,7 @@ class MachinePlugin:
         finally:
             context.close()
 
-    def _getConfig(self,config, options, host, prop):
+    def _getConfig(self,config, options, host, prop, raiseerror=True):
         """ Gets a value from config or options """
         p = eval("options.%s" % prop)
         if p:
@@ -241,7 +241,13 @@ class MachinePlugin:
         try:
             return config.get(host, prop)
         except (ConfigParser.NoSectionError, ConfigParser.NoOptionError):
-            return config.get("global", prop)
+            try:
+                return config.get("global", prop)
+            except (ConfigParser.NoSectionError, ConfigParser.NoOptionError), ex:
+                if raiseerror:
+                    raise ex
+                else:
+                    return
 
 def load():
     """ Loads the current plugin. """
