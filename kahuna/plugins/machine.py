@@ -194,27 +194,39 @@ class MachinePlugin:
         parser = OptionParser(usage="machine delete <options>")
         parser.add_option("-n","--name",help="the name of the physical machine",action="store",dest="name")
         parser.add_option("-i","--host",help="the ip of the physical machine",action="store",dest="host")
+        parser.add_option("-a","--all",help="afects all physical machines in abiquo",action="store_true",dest="all_true")
         (options, args) = parser.parse_args(args)
         name = options.name
         host = options.host
+        all_true = options.all_true
 
-        if not name and not host:
+        if not all_true and not name and not host:
             parser.print_help()
             return
 
         context = ContextLoader().load()
         try:
             admin =  context.getAdministrationService()
-            if name:
-                machine = admin.findMachine(MachinePredicates.name(name))
+
+            if all_true:
+                machines = admin.listMachines()
+                if not machines:
+                    print "Not machines found"
+                    return
             else:
-                machine = admin.findMachine(MachinePredicates.ip(host))
-            if not machine:
-                print "Machine not found"
-                return
-            name=machine.getName()
-            machine.delete()
-            log.debug("Machine %s deleted succesfully" % name)
+                if name:
+                    machine = admin.findMachine(MachinePredicates.name(name))
+                else:
+                    machine = admin.findMachine(MachinePredicates.ip(host))
+                if not machine:
+                    print "Machine not found"
+                    return
+                machines = [machine]
+            
+            for machine in machines:
+                name=machine.getName()
+                machine.delete()
+                print "Machine '%s' deleted succesfully" % name
 
         except (AbiquoException, AuthorizationException), ex:
             print "Error %s" % ex.getMessage()
