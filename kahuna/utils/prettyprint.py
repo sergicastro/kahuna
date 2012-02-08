@@ -31,9 +31,9 @@ def pprint_table(table):
 
 def pprint_vms(vms, verbose=False):
     """ Pretty prints the given virtual machine list. """
-    table = [["id", "name", "cpu", "ram", "hd", "state", "vnc", "template"]]
+    table = [["id", "name", "cpu", "ram", "hd", "state", "vnc", "template", "virtual datacenter"]]
     if verbose:
-        table[0].extend(["virtual appliance", "virtual datacenter", "enterprise"])
+        table[0].extend(["virtual appliance", "enterprise"])
     for vm in vms:
         state = vm.getState()
         row = [vm.getId(), vm.getName(), vm.getCpu(), str(vm.getRam()) + " MB",
@@ -42,10 +42,9 @@ def pprint_vms(vms, verbose=False):
             row.append("-")
         else:
             row.append(vm.getVncAddress() + ":" + str(vm.getVncPort()))
-        row.append(vm.getTemplate().getName())
+        row.extend([vm.getTemplate().getName(), vm.getVirtualDatacenter().getName()])
         if verbose:
-            row.extend([vm.getVirtualAppliance().getName(),
-                vm.getVirtualDatacenter().getName(), vm.getEnterprise().getName()])
+            row.extend([vm.getVirtualAppliance().getName(), vm.getEnterprise().getName()])
         table.append(row)
     pprint_table(table)
 
@@ -81,6 +80,21 @@ def pprint_enterprises(enterprises):
     table = [["id", "name"]]
     for enterprise in enterprises:
         row = [enterprise.getId(), enterprise.getName()]
+        table.append(row)
+    pprint_table(table)
+
+def pprint_volumes(volumes):
+    """ Pretty prints the given volume list. """
+    table = [["id", "name", "size", "status" , "virtual datacenter", "virtual machine"]]
+    for vol in volumes:
+        row = [vol.getId(), vol.getName(), str(vol.getSizeInMB()) + " MB",
+                vol.getState(), vol.getVirtualDatacenter().getName()]
+        # TODO: Add parent navigation in jclouds.abiquo
+        link = vol.unwrap().searchLink("virtualmachine")
+        if link:
+            row.append(link.getTitle())
+        else:
+            row.append("-")
         table.append(row)
     pprint_table(table)
 

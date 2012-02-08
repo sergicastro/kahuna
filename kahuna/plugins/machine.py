@@ -21,8 +21,8 @@ log = logging.getLogger("kahuna")
 class MachinePlugin:
     """ Physical machines plugin. """
     def __init__(self):
-        config = ConfigLoader().load("machine.conf","config/machine.conf")
-        self._manager = Manager(config,log)
+        self.__config = ConfigLoader().load("machine.conf","config/machine.conf")
+        self.__manager = Manager(sefl.__config,log)
         pass
 
     def commands(self):
@@ -55,14 +55,14 @@ class MachinePlugin:
             if all_true:
                 machines = admin.listMachines()
                 log.debug("%s machines found." % str(len(machines)))
-                [self._manager.check_machine for machine in machines]
+                [self.__manager.check_machine for machine in machines]
                 pprint_machines(machines)
             else:
                 if name:
                     machine = admin.findMachine(MachinePredicates.name(name))
                 else:
                     machine = admin.findMachine(MachinePredicates.ip(host))
-                self._manager.check_machine(machine)
+                self.__manager.check_machine(machine)
                 pprint_machines([machine]);
         except (AbiquoException, AuthorizationException), ex:
             print "Error %s" % ex.getMessage()
@@ -92,12 +92,12 @@ class MachinePlugin:
             parser.print_help()
             return
 
-        user = self._manager.get_config(options,host,"user")
+        user = self.__manager.get_config(options,host,"user")
         psswd = self._manager.get_config(options,host,"psswd")
-        rsip = self._manager.get_config(options,host,"remoteservicesip")
-        dsname = self._manager.get_config(options,host,"datastore")
-        vswitch =  self._manager.get_config(options,host,"vswitch")
-        hypervisor = self._manager.get_config(options,host,"type",False)
+        rsip = self.__manager.get_config(options,host,"remoteservicesip")
+        dsname = self.__manager.get_config(options,host,"datastore")
+        vswitch =  self.__manager.get_config(options,host,"vswitch")
+        hypervisor = self.__manager.get_config(options,host,"type",False)
 
         context = ContextLoader().load()
         try:
@@ -106,7 +106,7 @@ class MachinePlugin:
             # search or create datacenter
             log.debug("Searching for the datacenter 'kahuna' with remote services ip '%s'." % rsip)
             dcs = admin.listDatacenters()
-            dc = self._manager.get_datacenter_by_rsip(dcs, rsip, context)
+            dc = self.__manager.get_datacenter_by_rsip(dcs, rsip, context)
 
             # discover machine
             hypTypes = [HypervisorType.valueOf(hypervisor)] if hypervisor else HypervisorType.values()
