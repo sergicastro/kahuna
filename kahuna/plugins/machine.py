@@ -28,13 +28,13 @@ class MachinePlugin:
     def commands(self):
         """ Returns the commands provided by the plugin, mapped to the handler methods. """
         commands = {}
-        commands['check'] = self.checkMachines
-        commands['create'] = self.createMachine
-        commands['delete'] = self.deleteMachine
-        commands['list'] = self.listMachines
+        commands['check'] = self.check_machines
+        commands['create'] = self.create_machine
+        commands['delete'] = self.delete_machine
+        commands['list'] = self.list_machines
         return commands
 
-    def checkMachines(self, args):
+    def check_machines(self, args):
         """ Check state from physical machine. """
         parser = OptionParser(usage="machine check <options>")
         parser.add_option("-n","--name",help="the name of the physical machine",action="store",dest="name")
@@ -69,7 +69,7 @@ class MachinePlugin:
         finally:
             context.close()
 
-    def createMachine(self, args):
+    def create_machine(self, args):
         """ Create a physical machine in abiquo. This method uses configurable constats for default values."""
         parser = OptionParser(usage="machine create --host <host> <options>")
 
@@ -157,7 +157,7 @@ class MachinePlugin:
         finally:
             context.close()
 
-    def deleteMachine(self, args):
+    def delete_machine(self, args):
         """ Remove a physical machine from abiquo. """
         parser = OptionParser(usage="machine delete <options>")
         parser.add_option("-n","--name",help="the name of the physical machine",action="store",dest="name")
@@ -201,7 +201,7 @@ class MachinePlugin:
         finally:
             context.close()
     
-    def listMachines(self,args):
+    def list_machines(self,args):
         """ List physical machines from abiquo """
         context = ContextLoader().load()
         try:

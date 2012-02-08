@@ -52,7 +52,6 @@ class Manager:
         selected_dc = None        
         for dc in datacenters:
             nc = dc.findRemoteService(RemoteServicePredicates.type(RemoteServiceType.NODE_COLLECTOR))
-            print nc
             if nc and nc.getUri().find(rsip) >= 0:
                 self._logger.debug("Node Collector [%s] found in datacenter '%s'." % (rsip, dc.getName()))
                 vsm = dc.findRemoteService(RemoteServicePredicates.type(RemoteServiceType.VIRTUAL_SYSTEM_MONITOR))
