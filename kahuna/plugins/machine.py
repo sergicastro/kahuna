@@ -4,7 +4,7 @@ import logging
 import ConfigParser
 from kahuna.session import ContextLoader
 from kahuna.config import ConfigLoader
-from kahuna.utils.prettyprint import pprint_machines
+from kahuna.utils.prettyprint import pprint_machines,pprint_datastores
 from physicalmachine.pmmanager import Manager
 from optparse import OptionParser
 from org.jclouds.abiquo.domain.exception import AbiquoException
@@ -22,7 +22,7 @@ class MachinePlugin:
     """ Physical machines plugin. """
     def __init__(self):
         self.__config = ConfigLoader().load("machine.conf","config/machine.conf")
-        self.__manager = Manager(sefl.__config,log)
+        self.__manager = Manager(self.__config,log)
         pass
 
     def commands(self):
@@ -32,6 +32,7 @@ class MachinePlugin:
         commands['create'] = self.create_machine
         commands['delete'] = self.delete_machine
         commands['list'] = self.list_machines
+        commands['datastores'] = self.list_datastores
         return commands
 
     def check_machines(self, args):
@@ -212,6 +213,50 @@ class MachinePlugin:
             print "Error %s" % ex.getMessage()
         finally:
             context.close()
+
+    def list_datastores(self,args):
+        """ List all datastores from physical machine """
+
+        parser = OptionParser(usage="machine datastores <options>")
+        parser.add_option("-n","--name",help="the name of a physical machine",action="store",dest="name")
+        parser.add_option("-i","--host",help="the ip of a physical machine",action="store",dest="host")
+        parser.add_option("-a","--all",help="afects all physical machines in abiquo",action="store_true",dest="all_true")
+        (options, args) = parser.parse_args(args)
+        name = options.name
+        host = options.host
+        all_true = options.all_true
+
+        if not all_true and not name and not host:
+            parser.print_help()
+            return
+
+        context = ContextLoader().load()
+        try:
+            admin =  context.getAdministrationService()
+
+            if all_true:
+                machines = admin.listMachines()
+                if not machines:
+                    print "Not machines found"
+                    return
+            else:
+                if name:
+                    machine = admin.findMachine(MachinePredicates.name(name))
+                else:
+                    machine = admin.findMachine(MachinePredicates.ip(host))
+                if not machine:
+                    print "Machine not found"
+                    return
+                machines = [machine]
+            
+            log.debug("%i machines found" % len(machines))
+            pprint_datastores(machines)
+
+        except (AbiquoException, AuthorizationException), ex:
+            print "Error %s" % ex.getMessage()
+        finally:
+            context.close()
+
 
 def load():
     """ Loads the current plugin. """

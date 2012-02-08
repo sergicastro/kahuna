@@ -99,7 +99,7 @@ def pprint_volumes(volumes):
     pprint_table(table)
 
 def pprint_machines(machines):
-    """ Pretty printd the given machine list. """
+    """ Pretty prints the given machine list. """
     table = [["id", "name", "address", "hypervisor", "state", "cpu (used/total)", "ram (used/total)"]]
     for machine in machines:
         row = [machine.getId(), machine.getName(), machine.getIp(), machine.getType().name(),
@@ -107,5 +107,17 @@ def pprint_machines(machines):
                 str(machine.getVirtualCpusUsed())+" / "+str(machine.getVirtualCpuCores()),
                 str(machine.getVirtualRamUsedInMb())+" / "+str(machine.getVirtualRamInMb()) + " MB"]
         table.append(row)
+    pprint_table(table)
+
+def pprint_datastores(machines):
+    """ Pretty prints the datastores of given machine list. """
+    table = [["name", "enabled", "size (used/total)", "machine", "address", "hypervisor"]]
+    for machine in machines:
+        for ds in machine.getDatastores():
+            row = [ds.getName(), "X" if ds.isEnabled() else "",
+                    str(ds.getUsedSize()/1024/1024)+" / "+str(ds.getSize()/1024/1024) + " MB",
+                    machine.getName(), machine.getIp(), machine.getType().name()]
+            table.append(row)
+        table.append(["","","","","",""])
     pprint_table(table)
 
