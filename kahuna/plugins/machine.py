@@ -5,6 +5,7 @@ import ConfigParser
 from kahuna.session import ContextLoader
 from kahuna.config import ConfigLoader
 from kahuna.utils.prettyprint import pprint_machines
+from physicalmachine.pmmanager import Manager
 from optparse import OptionParser
 from org.jclouds.abiquo.domain.exception import AbiquoException
 from org.jclouds.abiquo.domain.infrastructure import Datacenter,Rack
@@ -12,13 +13,16 @@ from org.jclouds.abiquo.predicates.infrastructure import MachinePredicates,Datac
 from org.jclouds.abiquo.reference import AbiquoEdition
 from org.jclouds.rest import AuthorizationException
 from org.jclouds.http import HttpResponseException
-from com.abiquo.model.enumerator import HypervisorType
+from com.abiquo.model.enumerator import HypervisorType,RemoteServiceType
+
 
 log = logging.getLogger("kahuna")
 
 class MachinePlugin:
     """ Physical machines plugin. """
     def __init__(self):
+        config = ConfigLoader().load("machine.conf","config/machine.conf")
+        self._manager = Manager(config,log)
         pass
 
     def commands(self):
@@ -51,29 +55,19 @@ class MachinePlugin:
             if all_true:
                 machines = admin.listMachines()
                 log.debug("%s machines found." % str(len(machines)))
-                [self._checkMachine for machine in machines]
+                [self._manager.check_machine for machine in machines]
                 pprint_machines(machines)
             else:
                 if name:
                     machine = admin.findMachine(MachinePredicates.name(name))
                 else:
                     machine = admin.findMachine(MachinePredicates.ip(host))
-                self._checkMachine(machine)
+                self._manager.check_machine(machine)
                 pprint_machines([machine]);
         except (AbiquoException, AuthorizationException), ex:
             print "Error %s" % ex.getMessage()
         finally:
             context.close()
-
-    def _checkMachine(self, machine):
-        try:
-            if not machine:
-                raise Exception("machine not found")
-            state = machine.check()
-            machine.setState(state)
-            log.debug("%s - %s" % (machine.getName(), state))
-        except (AbiquoException, AuthorizationException), ex:
-            print "Error %s" % ex.getMessage()
 
     def createMachine(self, args):
         """ Create a physical machine in abiquo. This method uses configurable constats for default values."""
@@ -84,7 +78,6 @@ class MachinePlugin:
                 help="ip or hostname from machine to create in abiquo [required]",action="store",dest="host")
         parser.add_option("-u","--user",help="user to loggin in the machine",action="store",dest="user")
         parser.add_option("-p","--psswd",help="password to loggin in the machine",action="store",dest="psswd")
-        # parser.add_option("-c","--port",help="port from machine",action="store",dest="port")
         parser.add_option("-t","--type",help="hypervisor type of the machine",action="store",dest="type")
         parser.add_option("-r","--rsip",help="ip from remote services",action="store",dest="remoteservicesip")
         parser.add_option("-d","--datastore",
@@ -99,47 +92,22 @@ class MachinePlugin:
             parser.print_help()
             return
 
-        config = ConfigLoader().load("machine.conf","config/machine.conf")
-        user = self._getConfig(config,options,host,"user")
-        psswd = self._getConfig(config,options,host,"psswd")
-        rsip = self._getConfig(config,options,host,"remoteservicesip")
-        dsname = self._getConfig(config,options,host,"datastore")
-        vswitch =  self._getConfig(config,options,host,"vswitch")
-        hypervisor = self._getConfig(config,options,host,"type",False)
+        user = self._manager.get_config(options,host,"user")
+        psswd = self._manager.get_config(options,host,"psswd")
+        rsip = self._manager.get_config(options,host,"remoteservicesip")
+        dsname = self._manager.get_config(options,host,"datastore")
+        vswitch =  self._manager.get_config(options,host,"vswitch")
+        hypervisor = self._manager.get_config(options,host,"type",False)
 
         context = ContextLoader().load()
         try:
             admin = context.getAdministrationService()
 
             # search or create datacenter
-            log.debug("Searching for the datacenter 'kahuna'.")
-            dc = admin.findDatacenter(DatacenterPredicates.name('kahuna'))
-            if not dc:
-                log.debug("No datacenter 'kahuna' found.")
-                dc = Datacenter.builder(context) \
-                        .name('kahuna') \
-                        .location('terrassa') \
-                        .remoteServices(rsip,AbiquoEdition.ENTERPRISE) \
-                        .build()
-                try:
-                    dc.save()
-                except (AbiquoException), ex:
-                    if ex.hasError("RS-3"):
-                        print "ip %s to create remote services has been used yet, try with another one" % rsip
-                        dc.delete()
-                        return
-                    else:
-                        raise ex
-                rack = Rack.builder(context,dc).name('rack').build()
-                rack.save()
-                log.debug("New datacenter 'kahuna' created.")
-            else:
-                rack = dc.findRack(RackPredicates.name('rack'))
-                if not rack:
-                    rack = Rack.builder(context,dc).name('rack').build()
-                    rack.save()
-                log.debug("Datacenter 'kahuna' found")
-        
+            log.debug("Searching for the datacenter 'kahuna' with remote services ip '%s'." % rsip)
+            dcs = admin.listDatacenters()
+            dc = self._manager.get_datacenter_by_rsip(dcs, rsip, context)
+
             # discover machine
             hypTypes = [HypervisorType.valueOf(hypervisor)] if hypervisor else HypervisorType.values()
 
@@ -175,7 +143,7 @@ class MachinePlugin:
                 return
 
             # saving machine
-            machine.setRack(rack)
+            machine.setRack(dc.findRack(RackPredicates.name('Volcano')))
             machine.setVirtualSwitch(vs)
             machine.save()
             log.debug("Machine saved")
@@ -244,22 +212,6 @@ class MachinePlugin:
             print "Error %s" % ex.getMessage()
         finally:
             context.close()
-
-    def _getConfig(self,config, options, host, prop, raiseerror=True):
-        """ Gets a value from config or options """
-        p = eval("options.%s" % prop)
-        if p:
-            return p
-        try:
-            return config.get(host, prop)
-        except (ConfigParser.NoSectionError, ConfigParser.NoOptionError):
-            try:
-                return config.get("global", prop)
-            except (ConfigParser.NoSectionError, ConfigParser.NoOptionError), ex:
-                if raiseerror:
-                    raise ex
-                else:
-                    return
 
 def load():
     """ Loads the current plugin. """
