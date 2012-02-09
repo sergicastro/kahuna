@@ -111,13 +111,13 @@ def pprint_machines(machines):
 
 def pprint_datastores(machines):
     """ Pretty prints the datastores of given machine list. """
-    table = [["name", "enabled", "size (used/total)", "machine", "address", "hypervisor"]]
+    table = [["hypervisor", "address", "machine", "id", "name", "enabled", "size (used/total)", "rootPath", "UUID"]]
     for machine in machines:
         for ds in machine.getDatastores():
-            row = [ds.getName(), "X" if ds.isEnabled() else "",
+            row = [machine.getType().name(), machine.getName(), machine.getIp(),
+                    ds.getId(), ds.getName(), ds.isEnabled(),
                     str(ds.getUsedSize()/1024/1024)+" / "+str(ds.getSize()/1024/1024) + " MB",
-                    machine.getName(), machine.getIp(), machine.getType().name()]
+                    ds.getRootPath(), ds.getDatastoreUUID()]                    
             table.append(row)
-        table.append(["","","","","",""])
     pprint_table(table)
 
