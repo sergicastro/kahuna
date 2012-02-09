@@ -94,7 +94,7 @@ class MachinePlugin:
             return
 
         user = self.__manager.get_config(options,host,"user")
-        psswd = self._manager.get_config(options,host,"psswd")
+        psswd = self.__manager.get_config(options,host,"psswd")
         rsip = self.__manager.get_config(options,host,"remoteservicesip")
         dsname = self.__manager.get_config(options,host,"datastore")
         vswitch =  self.__manager.get_config(options,host,"vswitch")
@@ -221,12 +221,18 @@ class MachinePlugin:
         parser.add_option("-n","--name",help="the name of a physical machine",action="store",dest="name")
         parser.add_option("-i","--host",help="the ip of a physical machine",action="store",dest="host")
         parser.add_option("-a","--all",help="afects all physical machines in abiquo",action="store_true",dest="all_true")
+        parser.add_option("-d","--datastore",help="the UUID of a datastore",action="store",dest="datastore")
+        parser.add_option("--enable",help="enables the selected datastore",action="store_true",dest="enable_true")
+        parser.add_option("--disable",help="disables the selected datastore",action="store_true",dest="disable_true")
         (options, args) = parser.parse_args(args)
         name = options.name
         host = options.host
+        datastore = options.datastore
         all_true = options.all_true
+        enable = options.enable_true
+        disable = options.disable_true
 
-        if not all_true and not name and not host:
+        if not all_true and not name and not host and not (datastore and (enable or disable)):
             parser.print_help()
             return
 
@@ -234,12 +240,16 @@ class MachinePlugin:
         try:
             admin =  context.getAdministrationService()
 
+            # show datastores from all machines
             if all_true:
                 machines = admin.listMachines()
                 if not machines:
                     print "Not machines found"
                     return
-            else:
+                log.debug("%i machines found" % len(machines))
+                pprint_datastores(machines)
+            # show datastores from a single machine
+            elif (name or host) and not datastore:
                 if name:
                     machine = admin.findMachine(MachinePredicates.name(name))
                 else:
@@ -248,9 +258,23 @@ class MachinePlugin:
                     print "Machine not found"
                     return
                 machines = [machine]
-            
-            log.debug("%i machines found" % len(machines))
-            pprint_datastores(machines)
+                log.debug("%i machines found" % len(machines))
+                pprint_datastores(machines)
+            # enable or disable a datastore
+            elif (name or host) and (datastore and (enable or disable)):
+                if name:
+                    machine = admin.findMachine(MachinePredicates.name(name))
+                else:
+                    machine = admin.findMachine(MachinePredicates.ip(host))
+                if not machine:
+                    print "Machine not found"
+                    return
+                datastores = machine.getDatastores()
+                boolean = True if enable else False
+                filtered = map(self__manager.enable_disable_datastore, datastores)
+                print filtered
+            else:
+                parser.print_help()
 
         except (AbiquoException, AuthorizationException), ex:
             print "Error %s" % ex.getMessage()

@@ -89,3 +89,8 @@ class Manager:
             self.__logger.debug("Datacenter '%s' found. " % selected_dc.getName())
             return selected_dc
             
+    def enable_disable_datastore(self, datastore, uuid, boolean_value):
+        """ Enables or disables the given datastore. """
+        if datastore.getDatastoreUuid() == uuid:
+            datastore.setEnabled(boolean_value)
+        return datastore
