@@ -269,10 +269,12 @@ class MachinePlugin:
                 if not machine:
                     print "Machine not found"
                     return
-                datastores = machine.getDatastores()
-                boolean = True if enable else False
-                filtered = map(self__manager.enable_disable_datastore, datastores)
-                print filtered
+                d = machine.findDatastore(datastore)
+                log.debug("%sabling datastore '%s'" % ("en" if enable else "dis", d.getName()))
+                pprint_datastores([machine])
+                d.setEnabled(True if enable else False)
+                machine.update()
+                pprint_datastores([machine])
             else:
                 parser.print_help()
 

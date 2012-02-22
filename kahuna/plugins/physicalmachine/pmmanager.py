@@ -41,7 +41,7 @@ class Manager:
                 raise Exception("machine not found")
             state = machine.check()
             machine.setState(state)
-            log.debug("%s - %s" % (machine.getName(), state))
+            self.__logger.debug("%s - %s" % (machine.getName(), state))
         except (AbiquoException, AuthorizationException), ex:
             print "Error %s" % ex.getMessage()
 
@@ -91,6 +91,7 @@ class Manager:
             
     def enable_disable_datastore(self, datastore, uuid, boolean_value):
         """ Enables or disables the given datastore. """
-        if datastore.getDatastoreUuid() == uuid:
+        if datastore.getDatastoreUUID() == uuid:
             datastore.setEnabled(boolean_value)
+            self.__logger.debug("%sabling datastore '%s'" % ("en" if boolean_value else "dis", datastore.getRootPath()))
         return datastore
