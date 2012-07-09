@@ -98,8 +98,10 @@ class MachinePlugin(AbsPlugin):
                 action='store', dest='datastore')
         parser.add_option('-s', '--vswitch',
                 help='virtual switch to select on physical machine',
-                action='store',
-                dest='vswitch')
+                action='store', dest='vswitch')
+        parser.add_option('-D', '--datacenter',
+                help='datacenter\' name where adds the machine',
+                action='store', dest='datacenter')
         (options, args) = parser.parse_args(args)
 
         # parse options
@@ -113,19 +115,23 @@ class MachinePlugin(AbsPlugin):
         rsip = self._getConfig(options, host, "remoteservicesip")
         dsname = self._getConfig(options, host, "datastore")
         vswitch = self._getConfig(options, host, "vswitch")
+        dcname = self._getConfig(options, host, "datacenter")
         hypervisor = options.hypervisor
+
+        if not dcname:
+            dcname = "kahuna"
 
         try:
             api_context = self._context.getApiContext()
             admin = self._context.getAdministrationService()
 
             # search or create datacenter
-            log.debug("Searching for the datacenter 'kahuna'.")
-            dc = admin.findDatacenter(DatacenterPredicates.name('kahuna'))
+            log.debug("Searching for the datacenter '%s'." % dcname)
+            dc = admin.findDatacenter(DatacenterPredicates.name(dcname))
             if not dc:
-                log.debug("No datacenter 'kahuna' found.")
+                log.debug("No datacenter '%s' found." % dcname)
                 dc = Datacenter.builder(api_context) \
-                        .name('kahuna') \
+                        .name(dcname) \
                         .location('terrassa') \
                         .remoteServices(rsip, AbiquoEdition.ENTERPRISE) \
                         .build()
@@ -141,13 +147,13 @@ class MachinePlugin(AbsPlugin):
                         raise ex
                 rack = Rack.builder(api_context, dc).name('rack').build()
                 rack.save()
-                log.debug("New datacenter 'kahuna' created.")
+                log.debug("New datacenter '%s' created." % dcname)
             else:
                 rack = dc.findRack(RackPredicates.name('rack'))
                 if not rack:
                     rack = Rack.builder(api_context, dc).name('rack').build()
                     rack.save()
-                log.debug("Datacenter 'kahuna' found")
+                log.debug("Datacenter '%s' found" % dcname)
 
             # discover machine
             if hypervisor:
