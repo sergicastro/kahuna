@@ -1,0 +1,30 @@
+{
+    "java": {
+        "install_flavor": "oracle",
+        "java_home": "/usr/lib/jvm/java-6-oraclejdk",
+        "oracle": {
+            "accept_oracle_download_terms": true
+        }
+    },
+    "tomcat": {
+        "port": 80,
+        "authbind": "yes",
+        "ajp_port": %(ajpport)d,
+        "jvm_route": "%(jvmroute)s",
+        "java_options": "%(javaopts)s"
+    },
+    "boundary": {
+        "api": {
+            "org_id": "%(bprobe_org)s",
+            "key": "%(bprobe_key)s"
+        }
+    },
+    "newrelic": {
+        "server_monitoring": {
+            "license": "%(newrelic_key)s"
+        },
+        "application_monitoring": {
+            "license": "%(newrelic_key)s"
+        }
+    }
+}

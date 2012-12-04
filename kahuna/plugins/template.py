@@ -3,7 +3,8 @@
 from optparse import OptionParser
 from kahuna.abstract import AbsPlugin
 from kahuna.utils.prettyprint import pprint_templates
-from org.jclouds.abiquo.predicates.cloud import VirtualMachineTemplatePredicates
+from org.jclouds.abiquo.predicates.cloud \
+        import VirtualMachineTemplatePredicates
 from org.jclouds.abiquo.domain.exception import AbiquoException
 from org.jclouds.rest import AuthorizationException
 
@@ -15,8 +16,7 @@ class TemplatePlugin(AbsPlugin):
         """ List all available templates """
         try:
             admin = self._context.getAdministrationService()
-            user = admin.getCurrentUser()
-            enterprise = user.getEnterprise()
+            enterprise = admin.getCurrentEnterprise()
             templates = enterprise.listTemplates()
             pprint_templates(templates)
         except (AbiquoException, AuthorizationException), ex:
@@ -37,8 +37,7 @@ class TemplatePlugin(AbsPlugin):
         # Once user input has been read, find the template
         try:
             admin = self._context.getAdministrationService()
-            user = admin.getCurrentUser()
-            enterprise = user.getEnterprise()
+            enterprise = admin.getCurrentEnterprise()
             template = enterprise.findTemplate(
                     VirtualMachineTemplatePredicates.name(name))
             if template:

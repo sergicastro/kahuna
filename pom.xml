@@ -7,7 +7,7 @@
     
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <jclouds.version>1.5.2</jclouds.version>
+        <jclouds.version>1.6.0-SNAPSHOT</jclouds.version>
     </properties>
 
     <repositories>
@@ -35,9 +35,19 @@
             <version>${jclouds.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.jclouds.driver</groupId>
+            <artifactId>jclouds-slf4j</artifactId>
+            <version>${jclouds.version}</version>
+        </dependency>
+        <dependency>
             <groupId>commons-lang</groupId>
             <artifactId>commons-lang</artifactId>
             <version>2.4</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.0.0</version>
         </dependency>
     </dependencies>
 

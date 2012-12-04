@@ -1,20 +1,19 @@
 #!/usr/bin/env jython
 
-from __future__ import with_statement  # jython 2.5.2 issue
+from __future__ import with_statement
 import logging
-import os
-from java.io import File
 from kahuna.abstract import AbsPlugin
 from kahuna.config import ConfigLoader
 from kahuna.utils.prettyprint import pprint_templates
+from kahuna.utils import ssh
 from com.google.common.collect import Iterables
 from optparse import OptionParser
 from org.jclouds.abiquo.domain.exception import AbiquoException
 from org.jclouds.compute import RunNodesException
 from org.jclouds.domain import LoginCredentials
-from org.jclouds.io import Payloads
 from org.jclouds.rest import AuthorizationException
-from org.jclouds.util import Strings2
+from org.jclouds.scriptbuilder.domain import StatementList
+from org.jclouds.scriptbuilder.domain import Statements
 
 log = logging.getLogger('kahuna')
 
@@ -51,8 +50,7 @@ class MothershipPlugin(AbsPlugin):
         """ List all available templates """
         try:
             admin = self._context.getAdministrationService()
-            user = admin.getCurrentUser()
-            enterprise = user.getEnterprise()
+            enterprise = admin.getCurrentEnterprise()
             templates = enterprise.listTemplates()
             pprint_templates(templates)
         except (AbiquoException, AuthorizationException), ex:
@@ -65,31 +63,38 @@ class MothershipPlugin(AbsPlugin):
         try:
             name = self.__config.get("deploy-chef", "template")
             log.info("Loading template...")
-            options = self._template_options(compute, "deploy-chef")
+            vdc, options = self._template_options(compute, "deploy-chef")
             template = compute.templateBuilder() \
-                    .imageNameMatches(name) \
-                    .options(options.blockOnPort(4000, 90)) \
-                    .build()
+                .imageNameMatches(name) \
+                .locationId(vdc.getId()) \
+                .options(options) \
+                .build()
 
-            log.info("Deploying %s..." % template.getImage().getName())
+            log.info("Deploying %s to %s..." % (template.getImage().getName(),
+                vdc.getDescription()))
             node = Iterables.getOnlyElement(
-                    compute.createNodesInGroup("kahuna-chef", 1, template))
+                compute.createNodesInGroup("kahuna-chef", 1, template))
+
+            log.info("Created %s at %s" % (node.getName(),
+                Iterables.getOnlyElement(node.getPublicAddresses())))
 
             cookbooks = self.__config.get("deploy-chef", "cookbooks")
-            with open(self.__scriptdir + "/configure-chef.sh", "r") as f:
+            with open("%s/configure-chef.sh" % self.__scriptdir, "r") as f:
                 script = f.read() % {'cookbooks': cookbooks}
 
             log.info("Configuring node with cookbooks: %s..." % cookbooks)
             compute.runScriptOnNode(node.getId(), script)
 
-            log.info("Chef Server configured!")
-            log.info("You can access the admin console at: http://%s:4040"
-                    % Iterables.getOnlyElement(node.getPrivateAddresses()))
+            log.info("Done! You can access the admin console at: "
+                    "http://%s:4040"
+                    % Iterables.getOnlyElement(node.getPublicAddresses()))
 
             log.info("These are the certificates to access the API:")
-            self._print_node_file(self._context, node,
-                    "/etc/chef/validation.pem")
-            self._print_node_file(self._context, node, "/etc/chef/webui.pem")
+            webui = ssh.get(self._context, node, "/etc/chef/webui.pem")
+            log.info("webui.pem: %s", webui)
+            validator = ssh.get(self._context, node,
+                "/etc/chef/validation.pem")
+            log.info("validation.pem: %s" % validator)
 
         except RunNodesException, ex:
             self._print_node_errors(ex)
@@ -111,6 +116,9 @@ class MothershipPlugin(AbsPlugin):
         parser.add_option('-p', '--properties',
                 help='Path to the abiquo.properties file to use',
                 action='store', dest='props')
+        parser.add_option('-j', '--jenkins-version',
+                help='Download the given version of the wars from Jenkins',
+                action='store', dest='jenkins')
         (options, args) = parser.parse_args(args)
 
         if not options.template or not options.props:
@@ -121,25 +129,46 @@ class MothershipPlugin(AbsPlugin):
 
         try:
             log.info("Loading template...")
-            template_options = self._template_options(compute, "deploy-abiquo")
+            vdc, template_options = self._template_options(compute,
+                    "deploy-abiquo")
             template = compute.templateBuilder() \
-                    .imageId(options.template) \
-                    .options(template_options) \
-                    .build()
+                .imageId(options.template) \
+                .locationId(vdc.getId()) \
+                .options(template_options) \
+                .build()
 
-            log.info("Deploying %s..." % template.getImage().getName())
+            log.info("Deploying %s to %s..." % (template.getImage().getName(),
+                vdc.getDescription()))
             node = Iterables.getOnlyElement(
-                    compute.createNodesInGroup("kahuna-abiquo", 1, template))
+                compute.createNodesInGroup("kahuna-abiquo", 1, template))
 
-            self._upload_file_node(self._context, node, "/opt/abiquo/config",
-                    options.props, True)
+            log.info("Created %s at %s" % (node.getName(),
+                Iterables.getOnlyElement(node.getPublicAddresses())))
 
-            log.info("Restarting Abiquo Tomcat...")
-            compute.runScriptOnNode(node.getId(),
-                    "service abiquo-tomcat restart")
+            # Generate the bootstrap script
+            bootstrap = []
+            bootstrap.append(Statements.exec("service abiquo-tomcat stop"))
 
-            log.info("Abiquo configured at: %s" %
-                    Iterables.getOnlyElement(node.getPrivateAddresses()))
+            with open(options.props, "r") as f:
+                bootstrap.append(Statements.createOrOverwriteFile(
+                    "/opt/abiquo/config/abiquo.properties", [f.read()]))
+
+            with open("%s/configure-abiquo.sh" % self.__scriptdir, "r") as f:
+                bootstrap.append(Statements.exec(f.read()))
+
+            if options.jenkins:
+                with open("%s/configure-from-jenkins.sh" %
+                        self.__scriptdir, "r") as f:
+                    jenkins_script = f.read() % {'version': options.jenkins}
+                bootstrap.append(Statements.exec(jenkins_script))
+
+            bootstrap.append(Statements.exec("service abiquo-tomcat start"))
+
+            log.info("Configuring node with the given properties...")
+            compute.runScriptOnNode(node.getId(), StatementList(bootstrap))
+
+            log.info("Done! Abiquo configured at: %s" %
+                    Iterables.getOnlyElement(node.getPublicAddresses()))
 
         except RunNodesException, ex:
             self._print_node_errors(ex)
@@ -152,15 +181,20 @@ class MothershipPlugin(AbsPlugin):
         try:
             name = self.__config.get(config_section, "template")
             log.info("Loading template...")
-            options = self._template_options(compute, config_section)
+            vdc, options = self._template_options(compute, config_section)
             template = compute.templateBuilder() \
-                    .imageNameMatches(name) \
-                    .options(options) \
-                    .build()
+                .imageNameMatches(name) \
+                .locationId(vdc.getId()) \
+                .options(options) \
+                .build()
 
-            log.info("Deploying %s..." % template.getImage().getName())
+            log.info("Deploying %s to %s..." % (template.getImage().getName(),
+                vdc.getDescription()))
             node = Iterables.getOnlyElement(
-                    compute.createNodesInGroup(vapp_name, 1, template))
+                compute.createNodesInGroup(vapp_name, 1, template))
+
+            log.info("Created %s at %s" % (node.getName(),
+                Iterables.getOnlyElement(node.getPublicAddresses())))
 
             # Configuration values
             redishost = self.__config.get(config_section, "redis_host")
@@ -168,78 +202,41 @@ class MothershipPlugin(AbsPlugin):
             nfsto = self.__config.get(config_section, "nfs_to")
             nfsfrom = self.__config.get(config_section, "nfs_from")
 
-            # abiquo-aim.ini
-            self._complete_file("abiquo-aim.ini", {'redishost': redishost,
-                'redisport': redisport, 'nfsto': nfsto})
-            self._upload_file_node(self._context, node, "/etc/",
-                    "abiquo-aim.ini")
+            bootstrap = []
 
-            # configure-aim-node.sh
-            with open(self.__scriptdir + "/configure-aim-node.sh", "r") as f:
+            with open("%s/abiquo-aim.ini" % self.__scriptdir, "r") as f:
+                aim_config = f.read() % {'redishost': redishost,
+                    'redisport': redisport, 'nfsto': nfsto}
+            bootstrap.append(Statements.createOrOverwriteFile(
+                "/etc/abiquo-aim.ini", [aim_config]))
+
+            with open("%s/configure-aim-node.sh" % self.__scriptdir, "r") as f:
                 script = f.read() % {'nfsfrom': nfsfrom, 'nfsto': nfsto}
+            bootstrap.append(Statements.exec(script))
 
             log.info("Configuring node...")
-            compute.runScriptOnNode(node.getId(), script)
+            compute.runScriptOnNode(node.getId(), StatementList(bootstrap))
 
-            log.info("Node configured!")
-            log.info("You can access it at: ssh://%s" %
-                    Iterables.getOnlyElement(node.getPrivateAddresses()))
+            log.info("Done! You can access it at: %s" %
+                Iterables.getOnlyElement(node.getPublicAddresses()))
 
         except RunNodesException, ex:
             self._print_node_errors(ex)
 
     def _template_options(self, compute, deploycommand):
+        locations = compute.listAssignableLocations()
+        vdc = self.__config.get("mothership", "vdc")
+        location = filter(lambda l: l.getDescription() == vdc, locations)[0]
+        log.debug("Found VDC %s %s" % (location.getId(),
+            location.getDescription()))
         login = LoginCredentials.builder() \
-                .authenticateSudo(self.__config.getboolean(deploycommand,
+            .authenticateSudo(self.__config.getboolean(deploycommand,
                     "requires_sudo")) \
-                .user(self.__config.get(deploycommand, "template_user")) \
-                .password(self.__config.get(deploycommand, "template_pass")) \
-                .build()
-        return compute.templateOptions() \
-                .overrideLoginCredentials(login) \
-                .virtualDatacenter(self.__config.get("mothership", "vdc"))
-
-    def _print_node_file(self, context, node, file):
-        ssh = context.getUtils().sshForNode().apply(node)
-        try:
-            ssh.connect()
-            payload = ssh.get(file)
-            log.info(file)
-            log.info(Strings2.toStringAndClose(payload.getInput()))
-        finally:
-            if payload:
-                payload.release()
-            if ssh:
-                ssh.disconnect()
-
-    def _upload_file_node(self, context, node, destination, filename,
-            abs_path=False):
-        ssh = context.getUtils().sshForNode().apply(node)
-        path = filename if abs_path else self.__scriptdir + "/" + filename
-        tmpfile = os.path.exists(path + ".tmp")
-        file = File(path + ".tmp" if tmpfile else path)
-
-        if abs_path:
-            filename = os.path.basename(path)
-
-        try:
-            ssh.connect()
-            log.info("Uploading file %s..." % filename)
-            ssh.put(destination + "/" + filename,
-                    Payloads.newFilePayload(file))
-        finally:
-            if ssh:
-                ssh.disconnect()
-            if tmpfile:
-                os.remove(file.getPath())
-
-    def _complete_file(self, filename, dictionary):
-        with open(self.__scriptdir + "/" + filename, "r") as f:
-            content = f.read()
-        content = content % dictionary
-        with open(self.__scriptdir + "/" + filename + ".tmp", "w") as f:
-            f.write(content)
-        log.info("File %s completed" % filename)
+            .user(self.__config.get(deploycommand, "template_user")) \
+            .password(self.__config.get(deploycommand, "template_pass")) \
+            .build()
+        return (location, compute.templateOptions()
+            .overrideLoginCredentials(login))
 
     def _print_node_errors(self, ex):
         for error in ex.getExecutionErrors().values():
